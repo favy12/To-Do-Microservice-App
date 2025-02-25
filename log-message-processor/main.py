@@ -1,3 +1,16 @@
+# Remove the thriftpy import hack - no longer needed with updated py_zipkin
+import thriftpy2  # Direct import for potential future use
+from py_zipkin.zipkin import zipkin_span, ZipkinAttrs, generate_random_64bit_string
+import sys
+import time
+import redis
+import os
+import json
+import requests
+import random
+
+# Rest of your original code remains unchanged...
+
 import time
 import redis
 import os

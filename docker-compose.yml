@@ -1,0 +1,99 @@
+services:
+  traefik:
+    image: traefik:v2.9
+    command:
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--certificatesresolvers.myresolver.acme.httpchallenge=true"
+      - "--certificatesresolvers.myresolver.acme.httpchallenge.entrypoint=web"
+      - "--certificatesresolvers.myresolver.acme.email=devopslife@gmail.com"
+      - "--certificatesresolvers.myresolver.acme.storage=/letsencrypt/acme.json"
+      - "--log.level=DEBUG"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./letsencrypt:/letsencrypt
+    networks:
+      - traefik-net
+
+  frontend:
+    build: 
+      context: ./frontend
+      dockerfile: Dockerfile
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.frontend.rule=Host(`faveetech.online`)"
+      - "traefik.http.routers.frontend.entrypoints=websecure"
+      - "traefik.http.routers.frontend.tls.certresolver=myresolver"
+      - "traefik.http.middlewares.redirect.redirectscheme.scheme=https"
+      - "traefik.http.routers.frontend.middlewares=redirect"
+    networks:
+      - traefik-net
+      - backend-net
+
+  auth-api:
+    build: ./auth-api
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.auth.rule=Host(`auth.faveetech.online`)"
+      - "traefik.http.routers.auth.entrypoints=websecure"
+      - "traefik.http.routers.auth.tls.certresolver=myresolver"
+    networks:
+      - traefik-net
+      - backend-net
+    ports:
+      - "8081:8081" 
+    environment:
+      - AUTH_API_PORT=${AUTH_API_PORT}
+      - JWT_SECRET=${JWT_SECRET}
+      - USERS_API_ADDRESS=${USERS_API_ADDRESS}
+      - ZIPKIN_URL=${ZIPKIN_URL}
+
+  todos-api:
+    build: ./todos-api
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.todos.rule=Host(`todos.faveetech.online`)"
+      - "traefik.http.routers.todos.entrypoints=websecure"
+      - "traefik.http.routers.todos.tls.certresolver=myresolver"
+    networks:
+      - traefik-net
+      - backend-net
+
+  users-api:
+    build: ./users-api
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.users.rule=Host(`users.faveetech.online`)"
+      - "traefik.http.routers.users.entrypoints=websecure"
+      - "traefik.http.routers.users.tls.certresolver=myresolver"
+    networks:
+      - traefik-net
+      - backend-net
+
+  log-processor:
+    build: ./log-message-processor
+    depends_on:
+      - redis
+    networks:
+      - backend-net
+
+  redis:
+    image: redis:alpine
+    networks:
+      - backend-net
+
+  zipkin:
+    image: openzipkin/zipkin
+    networks:
+      - backend-net
+
+networks:
+  traefik-net:
+    external: true
+  backend-net:
+    internal: true

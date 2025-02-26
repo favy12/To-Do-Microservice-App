@@ -1,7 +1,9 @@
 services:
   traefik:
-    image: traefik:v2.9
+    image: traefik:v2.10
+    container_name: traefik
     command:
+      - "--api.insecure=true"
       - "--providers.docker=true"
       - "--providers.docker.exposedbydefault=false"
       - "--entrypoints.web.address=:80"
@@ -17,36 +19,46 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./letsencrypt:/letsencrypt
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.acme-http.entrypoints=web"
+      - "traefik.http.routers.acme-http.rule=PathPrefix(`/.well-known/acme-challenge/`)"
+      - "traefik.http.routers.acme-http.service=acme-http@internal"
+      - "traefik.http.routers.acme-http.priority=200"
     networks:
       - traefik-net
 
   frontend:
-    build: 
+    build:
       context: ./frontend
       dockerfile: Dockerfile
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.frontend.rule=Host(`faveetech.online`)"
+      - "traefik.http.routers.frontend.rule=Host(`faveetech.online`) && ((Path(`/login`) && Method(`GET`)) || Path(`/`))"
       - "traefik.http.routers.frontend.entrypoints=websecure"
       - "traefik.http.routers.frontend.tls.certresolver=myresolver"
-      - "traefik.http.middlewares.redirect.redirectscheme.scheme=https"
-      - "traefik.http.routers.frontend.middlewares=redirect"
+      - "traefik.http.routers.frontend.priority=1"
+      - "traefik.http.services.frontend.loadbalancer.server.port=80"
+    environment:
+      - JWT_SECRET=${JWT_SECRET}
     networks:
       - traefik-net
-      - backend-net
 
   auth-api:
     build: ./auth-api
+    ports:
+      - "8081:8081"
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.auth.rule=Host(`auth.faveetech.online`)"
+      - "traefik.http.routers.auth.rule=Host(`faveetech.online`) && Path(`/login`) && Method(`POST`)"
       - "traefik.http.routers.auth.entrypoints=websecure"
       - "traefik.http.routers.auth.tls.certresolver=myresolver"
+      - "traefik.http.routers.auth.priority=100"
+      - "traefik.http.middlewares.auth-host.headers.customrequestheaders.Host=auth.faveetech.online"
+      - "traefik.http.routers.auth.middlewares=auth-host"
+      - "traefik.http.services.auth.loadbalancer.server.port=8081"
     networks:
       - traefik-net
-      - backend-net
-    ports:
-      - "8081:8081" 
     environment:
       - AUTH_API_PORT=${AUTH_API_PORT}
       - JWT_SECRET=${JWT_SECRET}
@@ -57,12 +69,18 @@ services:
     build: ./todos-api
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.todos.rule=Host(`todos.faveetech.online`)"
+      - "traefik.http.routers.todos.rule=Host(`faveetech.online`) && PathPrefix(`/todos`)"
       - "traefik.http.routers.todos.entrypoints=websecure"
       - "traefik.http.routers.todos.tls.certresolver=myresolver"
+      - "traefik.http.services.todos.loadbalancer.server.port=8082"
+      - "traefik.http.middlewares.forward-auth-header.headers.customrequestheaders.Authorization=Authorization"
+      - "traefik.http.routers.todos-api.middlewares=forward-auth-header"
+    ports:
+      - "8082:8082"
+    environment:
+      - JWT_SECRET=${JWT_SECRET}
     networks:
       - traefik-net
-      - backend-net
 
   users-api:
     build: ./users-api
@@ -71,14 +89,19 @@ services:
       - "traefik.http.routers.users.rule=Host(`users.faveetech.online`)"
       - "traefik.http.routers.users.entrypoints=websecure"
       - "traefik.http.routers.users.tls.certresolver=myresolver"
+      - "traefik.http.services.users.loadbalancer.server.port=8083"
     networks:
       - traefik-net
-      - backend-net
 
   log-processor:
     build: ./log-message-processor
     depends_on:
       - redis
+    environment:
+      - REDIS_HOST=${REDIS_HOST}
+      - REDIS_PORT=${REDIS_PORT}
+      - REDIS_CHANNEL=${REDIS_CHANNEL}
+      - ZIPKIN_URL=${ZIPKIN_URL}
     networks:
       - backend-net
 
@@ -97,3 +120,4 @@ networks:
     external: true
   backend-net:
     internal: true
+

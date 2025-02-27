@@ -1,0 +1,114 @@
+services:
+  traefik:
+    image: traefik:v2.9
+    container_name: traefik
+    restart: always
+    command:
+      # Enable Docker provider (traefik will auto-detect containers)
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      # Define entrypoints for HTTP and HTTPS
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      # Redirect HTTP to HTTPS
+      #- "--entrypoints.web.http.redirections.entryPoint.to=websecure"
+      #- "--entrypoints.web.http.redirections.entryPoint.scheme=https"
+      # Let's Encrypt configuration for automatic SSL
+      - "--certificatesresolvers.myresolver.acme.tlschallenge=true"
+      - "--certificatesresolvers.myresolver.acme.email=devopslife@gmail.com"
+      - "--certificatesresolvers.myresolver.acme.storage=/letsencrypt/acme.json"
+    ports:
+      - "80:80"
+      - "443:443"
+      # Optionally expose Traefik dashboard (for debugging)
+      #- "8080:8080"
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+      - "./letsencrypt:/letsencrypt"
+    networks:
+      - web
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "${PORT}:${PORT}"
+    env_file:
+      - .env
+    depends_on:
+      - auth-api
+      - todos-api
+      - users-api
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.frontend.rule=Host(`faveetech.online`)"
+      - "traefik.http.routers.frontend.entrypoints=web,websecure"
+      - "traefik.http.routers.frontend.tls=true"
+      - "traefik.http.routers.frontend.tls.certresolver=myresolver"
+    networks:
+      - web
+
+  auth-api:
+    build: ./auth-api
+    ports:
+      - "${AUTH_API_PORT}:${AUTH_API_PORT}"
+    env_file:
+      - .env
+    labels:
+      - "traefik.enable=true"
+      # Notice we include both the internal name (for inter-container use) and the public domain
+      - "traefik.http.routers.auth.rule=Host(`auth.faveetech.online`,`auth-api.faveetech.online`)"
+      - "traefik.http.routers.auth.entrypoints=web,websecure"
+      - "traefik.http.routers.auth.tls=true"
+      - "traefik.http.routers.auth.tls.certresolver=myresolver"
+    networks:
+      - web
+
+  todos-api:
+    build: ./todos-api
+    ports:
+      - "8082:8082"
+    env_file:
+      - .env
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.todos.rule=Host(`todos.faveetech.online`,`todos-api.faveetech.online`)"
+      - "traefik.http.routers.todos.entrypoints=web,websecure"
+      - "traefik.http.routers.todos.tls=true"
+      - "traefik.http.routers.todos.tls.certresolver=myresolver"
+    networks:
+      - web
+
+  users-api:
+    build: ./users-api
+    ports:
+      - "${SERVER_PORT}:${SERVER_PORT}"
+    env_file:
+      - .env
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.users.rule=Host(`users.faveetech.online`,`users-api.faveetech.online`)"
+      - "traefik.http.routers.users.entrypoints=web,websecure"
+      - "traefik.http.routers.users.tls=true"
+      - "traefik.http.routers.users.tls.certresolver=myresolver"
+    networks:
+      - web
+
+  log-processor:
+    build: ./log-message-processor
+    env_file:
+      - .env
+    depends_on:
+      - redis-queue
+    networks:
+      - web
+
+  redis-queue:
+    image: redis:6.2
+    ports:
+      - "6379:6379"
+    networks:
+      - web
+
+networks:
+  web:
+    driver: bridge

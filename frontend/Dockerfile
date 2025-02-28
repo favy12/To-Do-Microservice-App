@@ -1,6 +1,6 @@
 FROM node:14-slim
 
-# Install Python2 (or python-is-python3 if node-sass works with python3) and build tools
+# Install Python2 and build tools
 RUN apt-get update && apt-get install -y python2 build-essential && \
     ln -s /usr/bin/python2 /usr/bin/python && \
     rm -rf /var/lib/apt/lists/*

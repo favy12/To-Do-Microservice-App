@@ -55,7 +55,7 @@ services:
       - .env
     labels:
       - "traefik.enable=true"
-      # Notice we include both the internal name (for inter-container use) and the public domain
+      # Include both the internal name (for inter-container use) and the public domain
       - "traefik.http.routers.auth.rule=Host(`auth.faveetech.online`,`auth-api.faveetech.online`)"
       - "traefik.http.routers.auth.entrypoints=web,websecure"
       - "traefik.http.routers.auth.tls=true"
